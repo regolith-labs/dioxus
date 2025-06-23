@@ -2638,6 +2638,16 @@ impl BuildRequest {
             )?,
         )?;
 
+        // Write the DioxusUtils.kt file
+        write(
+            self.wry_android_kotlin_files_out_dir()
+                .join("DioxusUtils.kt"),
+            hbs.render_template(
+                include_str!("../../assets/android/DioxusUtils.kt.hbs"),
+                &hbs_data,
+            )?,
+        )?;
+
         // Write the res folder, containing stuff like default icons, colors, and menubars.
         let res = app_main.join("res");
         create_dir_all(&res)?;
