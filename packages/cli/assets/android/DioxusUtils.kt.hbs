@@ -1,7 +1,14 @@
 package dev.dioxus.main;
 
+import androidx.annotation.Keep;
+
+@Keep
 class DioxusUtils {
-    fun getHardcodedString(): String {
-        return "Hello from DioxusUtils in Kotlin!";
+    companion object {
+        @Keep
+        @JvmStatic
+        fun getHardcodedString(): String {
+            return "Hello from DioxusUtils in Kotlin!";
+        }
     }
 }
