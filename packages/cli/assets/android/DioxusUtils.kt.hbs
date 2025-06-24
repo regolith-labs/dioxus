@@ -1,16 +1,19 @@
 package dev.dioxus.main
 
 import android.net.Uri
+import android.util.Base64
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.annotation.Keep
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
-import com.solana.mobilewalletadapter.clientlib.AppIdentity
+import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
-import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterConfig
-import com.solana.mobilewalletadapter.clientlib.protocol.requests.AuthorizeRequest
-import com.solana.mobilewalletadapter.clientlib.protocol.results.AuthorizeResult
-import com.solana.mobilewalletadapter.clientlib.protocol.results.AuthError // For error types
+import com.solana.mobilewalletadapter.clientlib.TransactionResult
+import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapterClient // For AuthorizationResult
+import com.solana.mobilewalletadapter.clientlib.Blockchain
+import com.solana.mobilewalletadapter.clientlib.Solana // Specific blockchain implementation
+// SignInWithSolana might be needed if we add sign-in functionality later
+// import com.solana.mobilewalletadapter.common.signin.SignInWithSolana 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -32,75 +35,89 @@ class DioxusUtils {
             Log.d(TAG, "establishMwaSession called for activity: $activity")
             val sender = ActivityResultSender(activity)
             
-            val config = MobileWalletAdapterConfig(
-                supportsSignAndSendTransactions = false, // Assuming only authorize is needed
-                maxTransactionsPerSigningRequest = 0,
-                maxMessagesPerSigningRequest = 0,
-                supportedTransactionVersions = listOf(0, "legacy"),
-                timeout = 10000 // 10 seconds
-            )
-
-            val appIdentity = AppIdentity(
+            // AppIdentity is replaced by ConnectionIdentity and MobileWalletAdapterConfig is no longer directly used here.
+            // Timeout will be passed directly to the MobileWalletAdapter constructor.
+            val connectionIdentity = ConnectionIdentity(
                 identityName = "Dioxus Demo App", // Replace with your app's name
                 identityUri = Uri.parse("https://dioxuslabs.com/"), // Replace with your app's URI
                 iconUri = Uri.parse("favicon.ico") // Replace with your app's icon URI (can be relative file path for MWA to resolve)
                 // Note: iconUri might need to be a content:// URI or resolvable file path by MWA wallets
             )
             
-            val walletAdapter = MobileWalletAdapter(sender, config, appIdentity)
+            // The MobileWalletAdapter constructor has changed.
+            // We'll use the ConnectionIdentity and a default timeout for now.
+            // MobileWalletAdapter(connectionIdentity, timeout, ioDispatcher, scenarioProvider)
+            // For simplicity, let's use the default timeout from the new MWA class or define one.
+            // The new MWA takes ConnectionIdentity as the first param.
+            // `sender` is used within the `transact` method, not in constructor.
+            // `config` is not used in the new MWA constructor.
+            val walletAdapter = MobileWalletAdapter(connectionIdentity) // Using default timeout
 
-            Log.d(TAG, "MobileWalletAdapter instance created. AppIdentity: ${appIdentity.identityName}, Config Timeout: ${config.timeout}")
+            Log.d(TAG, "MobileWalletAdapter instance created. ConnectionIdentity: ${connectionIdentity.identityName}")
 
             CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    Log.d(TAG, "Attempting MWA authorize...")
-                    val authRequest = AuthorizeRequest(
-                        identityName = appIdentity.identityName ?: "Dioxus App", // Fallback if null
-                        identityUri = appIdentity.identityUri,
-                        iconRelativeUri = appIdentity.iconUri
-                        // rpcCluster defaults to MainnetBeta, can be specified if needed
-                    )
-                    val authResult = walletAdapter.authorize(authRequest) // This is AuthorizeResult
-                    Log.d(TAG, "MWA authorize call completed, result: $authResult")
+                Log.d(TAG, "Attempting MWA transaction for authorization...")
+                // Set desired blockchain (e.g., Solana.Devnet, Solana.Mainnet)
+                // walletAdapter.blockchain = Solana.Devnet // Or Solana.Mainnet, etc.
+                // For now, let's assume the default (Solana.Devnet) is fine or it's set elsewhere if needed.
 
-                    when (authResult) {
-                        is AuthorizeResult.Success -> {
-                            val payload = authResult.payload
-                            Log.i(TAG, "MWA Authorize Success!")
-                            Log.i(TAG, "  AuthToken: ${payload.authToken}")
-                            payload.account?.let { acc ->
-                                Log.i(TAG, "  Account PublicKey: ${acc.publicKey58}")
-                                Log.i(TAG, "  Account Label: ${acc.accountLabel}")
-                            }
-                            payload.walletUriBase?.let { uri ->
-                                Log.i(TAG, "  Wallet URI Base: $uri")
-                            }
-                            payload.scopes?.let { scopes ->
-                                 Log.i(TAG, "  Scopes: ${scopes.joinToString()}")
-                            }
-                            // TODO: Securely store authToken and other relevant details.
+                val result = walletAdapter.transact(sender) { authResult ->
+                    // This block is executed after successful association and authorization.
+                    // The authResult here is MobileWalletAdapterClient.AuthorizationResult
+                    Log.i(TAG, "MWA Transaction/Authorization Success!")
+                    Log.i(TAG, "  AuthToken: ${authResult.authToken}")
+                    authResult.accounts.forEachIndexed { index, account ->
+                        Log.i(TAG, "  Account[$index]:")
+                        Log.i(TAG, "    PublicKey (Base64): ${Base64.encodeToString(account.publicKey, Base64.NO_WRAP)}")
+                        Log.i(TAG, "    Account Label: ${account.accountLabel}")
+                        account.chains?.forEach { chain ->
+                            Log.i(TAG, "    Chain: ${chain.fullName}")
                         }
-                        is AuthorizeResult.Failure -> {
-                            Log.e(TAG, "MWA Authorize Failed. Error: ${authResult.error.name}", authResult.e)
-                            // authResult.error is an enum like AuthError.NO_WALLET_FOUND, AuthError.USER_REJECTION etc.
-                            // authResult.e is the optional exception/cause
-                            when (authResult.error) {
-                                AuthError.NO_WALLET_FOUND -> Log.w(TAG, "No MWA-compatible wallet found on the device.")
-                                AuthError.USER_REJECTION -> Log.w(TAG, "User rejected the authorization request.")
-                                AuthError.REQUEST_TIMED_OUT -> Log.w(TAG, "MWA authorization request timed out.")
-                                AuthError.LOW_POWER_NO_CONNECTION -> Log.w(TAG, "MWA authorization failed due to low power mode and no connection.")
-                                AuthError.AUTHORIZATION_FAILED -> Log.e(TAG, "General authorization failure.", authResult.e)
-                                AuthError.CLIENT_TRUST_FAILED -> Log.e(TAG, "Client trust verification failed.", authResult.e)
-                                // Handle other AuthError types as needed
-                                else -> Log.e(TAG, "Unhandled AuthError: ${authResult.error.name}", authResult.e)
-                            }
+                        account.features?.forEach { feature ->
+                            Log.i(TAG, "    Feature: $feature")
                         }
-                        is AuthorizeResult.TooManyPayloads -> { // This case might not be hit for authorize but good to have
-                            Log.e(TAG, "MWA Authorize Failed: Too many payloads.")
+                        account.icon?.let { iconUri ->
+                            Log.i(TAG, "    Icon URI: $iconUri")
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Exception during MWA authorize operation: ${e.message}", e)
+                    authResult.walletUriBase?.let { uri ->
+                        Log.i(TAG, "  Wallet URI Base: $uri")
+                    }
+                    // Note: `scopes` are not directly part of AuthorizationResult in MWA 2.0 as they were in 1.0.
+                    // They are implicitly defined by the operations performed (e.g., signMessage, signTransaction).
+                    // If specific SIWS (Sign-In With Solana) scopes were requested, they would be in `authResult.signInResult.scopes`
+                    // For basic authorization, there aren't explicit scopes returned in this manner.
+
+                    // TODO: Securely store authToken and other relevant details.
+                    // You can return a value from this block if needed by the transact method's signature,
+                    // but for simple authorization, Unit is fine.
+                    Unit
+                }
+
+                when (result) {
+                    is TransactionResult.Success -> {
+                        // The actual success logging for authorization details is handled inside the transact block.
+                        // This 'result.data' would be Unit in this case.
+                        // The 'result.authResult' contains the authorization details again if needed here.
+                        Log.i(TAG, "MWA transact operation completed successfully.")
+                        // Example accessing authResult again if necessary:
+                        // val authData = result.authResult
+                        // Log.i(TAG, "  AuthToken from TransactionResult.Success: ${authData.authToken}")
+                    }
+                    is TransactionResult.Failure -> {
+                        Log.e(TAG, "MWA Transaction Failed: ${result.message}", result.e)
+                        // Specific error types like NoWalletFound are now distinct TransactionResult types.
+                        // Other errors are generally caught here.
+                        // You can inspect result.e for more specific causes if needed.
+                        // For example, if (result.e is MobileWalletAdapterClient.NotSubmittedException) { ... }
+                    }
+                    is TransactionResult.NoWalletFound -> {
+                        Log.w(TAG, "MWA Transaction Failed: No compatible wallet found. Message: ${result.message}")
+                    }
+                    // There isn't a direct "Cancelled" or "Interrupted" TransactionResult type like this.
+                    // Interruptions/cancellations usually manifest as exceptions leading to TransactionResult.Failure.
+                    // For example, if the user cancels the activity launched by `sender.startActivityForResult`,
+                    // it might throw an InterruptedException, caught by the associate method, leading to Failure.
                 }
             }
             
