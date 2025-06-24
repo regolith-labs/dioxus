@@ -1,14 +1,16 @@
 package dev.dioxus.main
 
-import android.app.Activity
+import android.net.Uri
 import android.util.Log
+import androidx.activity.ComponentActivity
 import androidx.annotation.Keep
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import com.solana.mobilewalletadapter.clientlib.AppIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
-import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterConfig
-// Import for AuthorizeResult not strictly needed for access but good for type clarity if used explicitly
-// import com.solana.mobilewalletadapter.clientlib.protocol.requests.AuthorizeResult 
+import com.solana.mobilewalletadapter.clientlib.protocol.requests.AuthorizeRequest
+import com.solana.mobilewalletadapter.clientlib.protocol.results.AuthorizeResult
+import com.solana.mobilewalletadapter.clientlib.protocol.results.AuthError // For error types
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -26,61 +28,76 @@ class DioxusUtils {
 
         @Keep
         @JvmStatic
-        fun establishMwaSession(activity: Activity): String {
+        fun establishMwaSession(activity: ComponentActivity): String { // Changed to ComponentActivity
             Log.d(TAG, "establishMwaSession called for activity: $activity")
             val sender = ActivityResultSender(activity)
             
-            // Configure the MWA client
-            // For authorize, we don't need to support signing transactions/messages.
             val config = MobileWalletAdapterConfig(
-                supportsSignAndSendTransactions = false,
-                maxTransactionsPerSigningRequest = 0, // Not applicable for authorize
-                maxMessagesPerSigningRequest = 0,   // Not applicable for authorize
-                supportedTransactionVersions = listOf(0, "legacy"), // Common default
-                timeout = 10000 // 10 seconds timeout for wallet interaction
-                // appIdentity can be set on the MobileWalletAdapter instance if needed
-                // chains defaults to Solana Mainnet, adjust if other chains are needed
+                supportsSignAndSendTransactions = false, // Assuming only authorize is needed
+                maxTransactionsPerSigningRequest = 0,
+                maxMessagesPerSigningRequest = 0,
+                supportedTransactionVersions = listOf(0, "legacy"),
+                timeout = 10000 // 10 seconds
             )
-            val walletAdapter = MobileWalletAdapter(config = config /*, appIdentity = null is default */)
 
-            Log.d(TAG, "MobileWalletAdapter instance created with config: $config")
+            val appIdentity = AppIdentity(
+                identityName = "Dioxus Demo App", // Replace with your app's name
+                identityUri = Uri.parse("https://dioxuslabs.com/"), // Replace with your app's URI
+                iconUri = Uri.parse("favicon.ico") // Replace with your app's icon URI (can be relative file path for MWA to resolve)
+                // Note: iconUri might need to be a content:// URI or resolvable file path by MWA wallets
+            )
+            
+            val walletAdapter = MobileWalletAdapter(sender, config, appIdentity)
 
-            // Launch a coroutine to perform the suspend call to authorize
+            Log.d(TAG, "MobileWalletAdapter instance created. AppIdentity: ${appIdentity.identityName}, Config Timeout: ${config.timeout}")
+
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     Log.d(TAG, "Attempting MWA authorize...")
-                    val authServiceResult = walletAdapter.authorize(sender)
-                    Log.d(TAG, "MWA authorize call completed, result: $authServiceResult")
+                    val authRequest = AuthorizeRequest(
+                        identityName = appIdentity.identityName ?: "Dioxus App", // Fallback if null
+                        identityUri = appIdentity.identityUri,
+                        iconRelativeUri = appIdentity.iconUri
+                        // rpcCluster defaults to MainnetBeta, can be specified if needed
+                    )
+                    val authResult = walletAdapter.authorize(authRequest) // This is AuthorizeResult
+                    Log.d(TAG, "MWA authorize call completed, result: $authResult")
 
-                    when (authServiceResult) {
-                        is TransactionResult.Success -> {
-                            val payload = authServiceResult.payload
-                            Log.i(TAG, "MWA Session established successfully!")
+                    when (authResult) {
+                        is AuthorizeResult.Success -> {
+                            val payload = authResult.payload
+                            Log.i(TAG, "MWA Authorize Success!")
                             Log.i(TAG, "  AuthToken: ${payload.authToken}")
-                            Log.i(TAG, "  Account PublicKey: ${payload.account?.publicKey58}")
-                            Log.i(TAG, "  Account Label: ${payload.account?.accountLabel}")
-                            Log.i(TAG, "  Wallet URI Base: ${payload.walletUriBase}")
-                            payload.scopes?.let { Log.i(TAG, "  Scopes: ${it.joinToString()}") }
-                            // TODO: Securely store authToken and other relevant details if they need to be passed to Rust or persisted.
+                            payload.account?.let { acc ->
+                                Log.i(TAG, "  Account PublicKey: ${acc.publicKey58}")
+                                Log.i(TAG, "  Account Label: ${acc.accountLabel}")
+                            }
+                            payload.walletUriBase?.let { uri ->
+                                Log.i(TAG, "  Wallet URI Base: $uri")
+                            }
+                            payload.scopes?.let { scopes ->
+                                 Log.i(TAG, "  Scopes: ${scopes.joinToString()}")
+                            }
+                            // TODO: Securely store authToken and other relevant details.
                         }
-                        is TransactionResult.Failure -> {
-                            Log.e(TAG, "MWA Session establishment failed: ${authServiceResult.message}", authServiceResult.e)
+                        is AuthorizeResult.Failure -> {
+                            Log.e(TAG, "MWA Authorize Failed. Error: ${authResult.error.name}", authResult.e)
+                            // authResult.error is an enum like AuthError.NO_WALLET_FOUND, AuthError.USER_REJECTION etc.
+                            // authResult.e is the optional exception/cause
+                            when (authResult.error) {
+                                AuthError.NO_WALLET_FOUND -> Log.w(TAG, "No MWA-compatible wallet found on the device.")
+                                AuthError.USER_REJECTION -> Log.w(TAG, "User rejected the authorization request.")
+                                AuthError.REQUEST_TIMED_OUT -> Log.w(TAG, "MWA authorization request timed out.")
+                                AuthError.LOW_POWER_NO_CONNECTION -> Log.w(TAG, "MWA authorization failed due to low power mode and no connection.")
+                                AuthError.AUTHORIZATION_FAILED -> Log.e(TAG, "General authorization failure.", authResult.e)
+                                AuthError.CLIENT_TRUST_FAILED -> Log.e(TAG, "Client trust verification failed.", authResult.e)
+                                // Handle other AuthError types as needed
+                                else -> Log.e(TAG, "Unhandled AuthError: ${authResult.error.name}", authResult.e)
+                            }
                         }
-                        is TransactionResult.NoWalletFound -> {
-                            Log.w(TAG, "MWA Session establishment failed: No MWA-compatible wallet found on the device.")
+                        is AuthorizeResult.TooManyPayloads -> { // This case might not be hit for authorize but good to have
+                            Log.e(TAG, "MWA Authorize Failed: Too many payloads.")
                         }
-                        is TransactionResult.Canceled -> {
-                            Log.w(TAG, "MWA Session establishment canceled by user.")
-                        }
-                        is TransactionResult.TimedOut -> {
-                            Log.w(TAG, "MWA Session establishment timed out.")
-                        }
-                        is TransactionResult.LowPowerNoConnection -> {
-                            Log.w(TAG, "MWA Session establishment failed due to low power mode and no connection.")
-                        }
-                        // `TransactionResult` is a sealed class, so an `else` might not be needed if all cases are covered.
-                        // However, if new results are added in future versions and not handled, this would catch them.
-                        // For now, assuming the above cover the main cases for clientlib-ktx:2.0.3
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Exception during MWA authorize operation: ${e.message}", e)
