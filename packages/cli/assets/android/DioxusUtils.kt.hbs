@@ -1,14 +1,95 @@
-package dev.dioxus.main;
+package dev.dioxus.main
 
-import androidx.annotation.Keep;
+import android.app.Activity
+import android.util.Log
+import androidx.annotation.Keep
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
+import com.solana.mobilewalletadapter.clientlib.TransactionResult
+import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterConfig
+// Import for AuthorizeResult not strictly needed for access but good for type clarity if used explicitly
+// import com.solana.mobilewalletadapter.clientlib.protocol.requests.AuthorizeResult 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @Keep
 class DioxusUtils {
     companion object {
+        private const val TAG = "DioxusMWA"
+
         @Keep
         @JvmStatic
         fun getHardcodedString(): String {
-            return "Hello from DioxusUtils in Kotlin!";
+            return "Hello from DioxusUtils in Kotlin!"
+        }
+
+        @Keep
+        @JvmStatic
+        fun establishMwaSession(activity: Activity): String {
+            Log.d(TAG, "establishMwaSession called for activity: $activity")
+            val sender = ActivityResultSender(activity)
+            
+            // Configure the MWA client
+            // For authorize, we don't need to support signing transactions/messages.
+            val config = MobileWalletAdapterConfig(
+                supportsSignAndSendTransactions = false,
+                maxTransactionsPerSigningRequest = 0, // Not applicable for authorize
+                maxMessagesPerSigningRequest = 0,   // Not applicable for authorize
+                supportedTransactionVersions = listOf(0, "legacy"), // Common default
+                timeout = 10000 // 10 seconds timeout for wallet interaction
+                // appIdentity can be set on the MobileWalletAdapter instance if needed
+                // chains defaults to Solana Mainnet, adjust if other chains are needed
+            )
+            val walletAdapter = MobileWalletAdapter(config = config /*, appIdentity = null is default */)
+
+            Log.d(TAG, "MobileWalletAdapter instance created with config: $config")
+
+            // Launch a coroutine to perform the suspend call to authorize
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    Log.d(TAG, "Attempting MWA authorize...")
+                    val authServiceResult = walletAdapter.authorize(sender)
+                    Log.d(TAG, "MWA authorize call completed, result: $authServiceResult")
+
+                    when (authServiceResult) {
+                        is TransactionResult.Success -> {
+                            val payload = authServiceResult.payload
+                            Log.i(TAG, "MWA Session established successfully!")
+                            Log.i(TAG, "  AuthToken: ${payload.authToken}")
+                            Log.i(TAG, "  Account PublicKey: ${payload.account?.publicKey58}")
+                            Log.i(TAG, "  Account Label: ${payload.account?.accountLabel}")
+                            Log.i(TAG, "  Wallet URI Base: ${payload.walletUriBase}")
+                            payload.scopes?.let { Log.i(TAG, "  Scopes: ${it.joinToString()}") }
+                            // TODO: Securely store authToken and other relevant details if they need to be passed to Rust or persisted.
+                        }
+                        is TransactionResult.Failure -> {
+                            Log.e(TAG, "MWA Session establishment failed: ${authServiceResult.message}", authServiceResult.e)
+                        }
+                        is TransactionResult.NoWalletFound -> {
+                            Log.w(TAG, "MWA Session establishment failed: No MWA-compatible wallet found on the device.")
+                        }
+                        is TransactionResult.Canceled -> {
+                            Log.w(TAG, "MWA Session establishment canceled by user.")
+                        }
+                        is TransactionResult.TimedOut -> {
+                            Log.w(TAG, "MWA Session establishment timed out.")
+                        }
+                        is TransactionResult.LowPowerNoConnection -> {
+                            Log.w(TAG, "MWA Session establishment failed due to low power mode and no connection.")
+                        }
+                        // `TransactionResult` is a sealed class, so an `else` might not be needed if all cases are covered.
+                        // However, if new results are added in future versions and not handled, this would catch them.
+                        // For now, assuming the above cover the main cases for clientlib-ktx:2.0.3
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Exception during MWA authorize operation: ${e.message}", e)
+                }
+            }
+            
+            val immediateReturnMessage = "MWA authorization process initiated. Check Logcat for '$TAG' for asynchronous result."
+            Log.d(TAG, immediateReturnMessage)
+            return immediateReturnMessage
         }
     }
 }
