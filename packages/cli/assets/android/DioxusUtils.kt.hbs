@@ -9,7 +9,7 @@ import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
-import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapterClient // For AuthorizationResult
+import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient // For AuthorizationResult
 import com.solana.mobilewalletadapter.clientlib.Blockchain
 import com.solana.mobilewalletadapter.clientlib.Solana // Specific blockchain implementation
 // SignInWithSolana might be needed if we add sign-in functionality later
@@ -71,13 +71,10 @@ class DioxusUtils {
                         Log.i(TAG, "    PublicKey (Base64): ${Base64.encodeToString(account.publicKey, Base64.NO_WRAP)}")
                         Log.i(TAG, "    Account Label: ${account.accountLabel}")
                         account.chains?.forEach { chain ->
-                            Log.i(TAG, "    Chain: ${chain.fullName}")
+                            Log.i(TAG, "    Chain: $chain")
                         }
                         account.features?.forEach { feature ->
                             Log.i(TAG, "    Feature: $feature")
-                        }
-                        account.icon?.let { iconUri ->
-                            Log.i(TAG, "    Icon URI: $iconUri")
                         }
                     }
                     authResult.walletUriBase?.let { uri ->
