@@ -33,7 +33,16 @@ class DioxusUtils {
         @JvmStatic
         fun establishMwaSession(activity: ComponentActivity): String { // Changed to ComponentActivity
             Log.d(TAG, "establishMwaSession called for activity: $activity")
-            val sender = ActivityResultSender(activity)
+
+            // Retrieve the pre-initialized ActivityResultSender from MainActivity
+            val sender: ActivityResultSender = if (activity is MainActivity) {
+                activity.mwaActivityResultSender
+            } else {
+                Log.e(TAG, "Activity passed to establishMwaSession is not an instance of MainActivity. Cannot get mwaActivityResultSender.")
+                // Fallback or error handling: Potentially create a new one, but this might lead to the same lifecycle issue
+                // if called too late. For now, returning an error message is safer.
+                return "Error: Activity is not MainActivity instance, cannot securely get ActivityResultSender."
+            }
             
             // AppIdentity is replaced by ConnectionIdentity and MobileWalletAdapterConfig is no longer directly used here.
             // Timeout will be passed directly to the MobileWalletAdapter constructor.

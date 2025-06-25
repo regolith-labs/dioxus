@@ -1,8 +1,18 @@
 package dev.dioxus.main;
 
 // need to re-export buildconfig down from the parent
-import {{application_id}}.BuildConfig;
+import com.example.Mobile.BuildConfig;
+import android.os.Bundle // Required for onCreate
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender // Required for MWA
+
 typealias BuildConfig = BuildConfig;
 
 
-class MainActivity : WryActivity()
+class MainActivity : WryActivity() {
+    internal lateinit var mwaActivityResultSender: ActivityResultSender
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState) // Ensures WryActivity.onCreate() is called
+        mwaActivityResultSender = ActivityResultSender(this)
+    }
+}
