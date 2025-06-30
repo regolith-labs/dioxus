@@ -74,6 +74,14 @@ class DioxusUtils {
                     // The authResult here is MobileWalletAdapterClient.AuthorizationResult
                     Log.i(TAG, "MWA Transaction/Authorization Success!")
                     Log.i(TAG, "  AuthToken: ${authResult.authToken}")
+
+                    // Send the public key to the Rust layer
+                    authResult.accounts.firstOrNull()?.let { account ->
+                        val publicKeyBase64 = Base64.encodeToString(account.publicKey, Base64.NO_WRAP)
+                        Log.i(TAG, "Sending public key to Rust: $publicKeyBase64")
+                        Ipc.sendPublicKey(publicKeyBase64)
+                    }
+
                     authResult.accounts.forEachIndexed { index, account ->
                         Log.i(TAG, "  Account[$index]:")
                         Log.i(TAG, "    PublicKey (Base64): ${Base64.encodeToString(account.publicKey, Base64.NO_WRAP)}")
