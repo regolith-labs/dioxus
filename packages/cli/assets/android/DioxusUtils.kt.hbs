@@ -22,6 +22,14 @@ import kotlinx.coroutines.launch
 class DioxusUtils {
     companion object {
         private const val TAG = "DioxusMWA"
+        private const val APP_IDENTITY_NAME = "Dioxus Demo App"
+        private val APP_IDENTITY_URI = Uri.parse("https://pub-1ec9c4f3ba9448c6a82b677a2bc8d950.r2.dev")
+        private val APP_ICON_URI = Uri.parse("favicon.ico")
+        // Note: The APP_ICON_URI is resolved relative to the APP_IDENTITY_URI.
+        // This means you need to host a `favicon.ico` file at your identity URI's root.
+        // For example, with the URIs above, the wallet will fetch the icon from:
+        // https://pub-1ec9c4f3ba9448c6a82b677a2bc8d950.r2.dev/favicon.ico
+        // This file is resolved from your web server, not from the assets bundled in this app.
 
         @Keep
         @JvmStatic
@@ -47,9 +55,9 @@ class DioxusUtils {
             // AppIdentity is replaced by ConnectionIdentity and MobileWalletAdapterConfig is no longer directly used here.
             // Timeout will be passed directly to the MobileWalletAdapter constructor.
             val connectionIdentity = ConnectionIdentity(
-                identityName = "Dioxus Demo App", // Replace with your app's name
-                identityUri = Uri.parse("https://pub-1ec9c4f3ba9448c6a82b677a2bc8d950.r2.dev"),
-                iconUri = Uri.parse("favicon.ico")
+                identityName = APP_IDENTITY_NAME,
+                identityUri = APP_IDENTITY_URI,
+                iconUri = APP_ICON_URI
             )
             
             // The MobileWalletAdapter constructor has changed.
@@ -139,9 +147,9 @@ class DioxusUtils {
             
             // AppIdentity is replaced by ConnectionIdentity
             val connectionIdentity = ConnectionIdentity(
-                identityName = "Dioxus Demo App", // Replace with your app's name
-                identityUri = Uri.parse("https://pub-1ec9c4f3ba9448c6a82b677a2bc8d950.r2.dev"),
-                iconUri = Uri.parse("favicon.ico")
+                identityName = APP_IDENTITY_NAME,
+                identityUri = APP_IDENTITY_URI,
+                iconUri = APP_ICON_URI
             )
             
             val walletAdapter = MobileWalletAdapter(connectionIdentity)
