@@ -1,7 +1,7 @@
 package dev.dioxus.main
 
 import android.net.Uri
-import android.util.Base64
+import com.funkatronic.encoders.Base58
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.annotation.Keep
@@ -66,8 +66,7 @@ class DioxusUtils {
             CoroutineScope(Dispatchers.IO).launch {
                 Log.d(TAG, "Attempting MWA transaction for authorization...")
                 // Set desired blockchain (e.g., Solana.Devnet, Solana.Mainnet)
-                // walletAdapter.blockchain = Solana.Devnet // Or Solana.Mainnet, etc.
-                // For now, let's assume the default (Solana.Devnet) is fine or it's set elsewhere if needed.
+                walletAdapter.blockchain = Solana.Mainnet
 
                 val result = walletAdapter.transact(sender) { authResult ->
                     // This block is executed after successful association and authorization.
@@ -77,29 +76,14 @@ class DioxusUtils {
 
                     // Send the public key to the Rust layer
                     authResult.accounts.firstOrNull()?.let { account ->
-                        val publicKeyBase64 = Base64.encodeToString(account.publicKey, Base64.NO_WRAP)
-                        Log.i(TAG, "Sending public key to Rust: $publicKeyBase64")
-                        Ipc.sendPublicKey(publicKeyBase64)
+                        val publicKeyBase58 = Base58.encodeToString(account.publicKey)
+                        Log.i(TAG, "Sending public key to Rust: $publicKeyBase58")
+                        Ipc.sendPublicKey(publicKeyBase58)
                     }
 
-                    authResult.accounts.forEachIndexed { index, account ->
-                        Log.i(TAG, "  Account[$index]:")
-                        Log.i(TAG, "    PublicKey (Base64): ${Base64.encodeToString(account.publicKey, Base64.NO_WRAP)}")
-                        Log.i(TAG, "    Account Label: ${account.accountLabel}")
-                        account.chains?.forEach { chain ->
-                            Log.i(TAG, "    Chain: $chain")
-                        }
-                        account.features?.forEach { feature ->
-                            Log.i(TAG, "    Feature: $feature")
-                        }
-                    }
                     authResult.walletUriBase?.let { uri ->
                         Log.i(TAG, "  Wallet URI Base: $uri")
                     }
-                    // Note: `scopes` are not directly part of AuthorizationResult in MWA 2.0 as they were in 1.0.
-                    // They are implicitly defined by the operations performed (e.g., signMessage, signTransaction).
-                    // If specific SIWS (Sign-In With Solana) scopes were requested, they would be in `authResult.signInResult.scopes`
-                    // For basic authorization, there aren't explicit scopes returned in this manner.
 
                     // TODO: Securely store authToken and other relevant details.
                     // You can return a value from this block if needed by the transact method's signature,
