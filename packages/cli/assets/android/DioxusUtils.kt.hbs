@@ -168,9 +168,10 @@ class DioxusUtils {
 
                 when (result) {
                     is TransactionResult.Success -> {
-                        val signedTxBytes = result.payload.signedPayloads.firstOrNull()
+                        // val signedTxBytes = result.payload.signedPayloads.firstOrNull()
+                        val signedTxBytes = result.successPayload?.signedPayloads?.first()
                         signedTxBytes?.let {
-                            val signedTxBase58 = Base58.encodeToString(it)
+                            val signedTxBase58 = Base58.encodeToString(signedTxBytes)
                             Log.i(TAG, "Signed transaction: $signedTxBase58")
                             // We need a way to send this back to Rust. Assuming an Ipc method.
                             Ipc.sendSignedTransaction(signedTxBase58)
