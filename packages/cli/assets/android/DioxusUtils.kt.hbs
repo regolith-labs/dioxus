@@ -168,8 +168,8 @@ class DioxusUtils {
 
                 when (result) {
                     is TransactionResult.Success -> {
-                        // val signedTxBytes = result.payload.signedPayloads.firstOrNull()
-                        val signedTxBytes = result.successPayload?.signedPayloads?.first()
+                        val signedTxBytes = result.payload.signedPayloads.firstOrNull()
+                        // val signedTxBytes = result.successPayload?.signedPayloads?.first()
                         signedTxBytes?.let {
                             val signedTxBase58 = Base58.encodeToString(signedTxBytes)
                             Log.i(TAG, "Signed transaction: $signedTxBase58")
