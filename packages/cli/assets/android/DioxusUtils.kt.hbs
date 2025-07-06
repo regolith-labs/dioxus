@@ -194,5 +194,68 @@ class DioxusUtils {
             Log.d(TAG, immediateReturnMessage)
             return immediateReturnMessage
         }
+
+        @Keep
+        @JvmStatic
+        fun signMessage(activity: ComponentActivity, message: ByteArray): String {
+            Log.d(TAG, "signMessage called for activity: $activity with message of size ${message.size}")
+
+            // Retrieve the pre-initialized ActivityResultSender from MainActivity
+            val sender: ActivityResultSender = if (activity is MainActivity) {
+                activity.mwaActivityResultSender
+            } else {
+                val errorMsg = "Activity passed to signMessage is not an instance of MainActivity. Cannot get mwaActivityResultSender."
+                Log.e(TAG, errorMsg)
+                return errorMsg
+            }
+            
+            val connectionIdentity = ConnectionIdentity(
+                identityName = APP_IDENTITY_NAME,
+                identityUri = APP_IDENTITY_URI,
+                iconUri = APP_ICON_URI
+            )
+            
+            val walletAdapter = MobileWalletAdapter(connectionIdentity)
+
+            CoroutineScope(Dispatchers.IO).launch {
+                Log.d(TAG, "Attempting MWA transaction for signing message...")
+                // Set desired blockchain
+                walletAdapter.blockchain = Solana.Mainnet
+
+                val result = walletAdapter.transact(sender) { authResult ->
+                    // Use signMessagesDetached for signing messages.
+                    // This requires the public key of the account to use for signing.
+                    val signingPublicKey = authResult.accounts.firstOrNull()?.publicKey 
+                        ?: throw IllegalStateException("No authorized account found for signing.")
+                    
+                    signMessagesDetached(arrayOf(message), arrayOf(signingPublicKey))
+                }
+
+                when (result) {
+                    is TransactionResult.Success -> {
+                        val signatureBytes = result.payload.messages.firstOrNull()?.signatures?.firstOrNull()
+                        signatureBytes?.let {
+                            val signatureBase58 = Base58.encodeToString(it)
+                            Log.i(TAG, "Signed message signature: $signatureBase58")
+                            Ipc.sendSignedMessage(signatureBase58)
+                        } ?: run {
+                            Log.w(TAG, "Message signing successful, but no signature was returned.")
+                        }
+                    }
+                    is TransactionResult.Failure -> {
+                        Log.e(TAG, "MWA Message Signing Failed: ${result.message}", result.e)
+                        // TODO: Propagate this error back to the Rust layer.
+                    }
+                    is TransactionResult.NoWalletFound -> {
+                        Log.w(TAG, "MWA Message Signing Failed: No compatible wallet found. Message: ${result.message}")
+                        // TODO: Propagate this error back to the Rust layer.
+                    }
+                }
+            }
+            
+            val immediateReturnMessage = "MWA message signing process initiated. Check Logcat for '$TAG' for asynchronous result."
+            Log.d(TAG, immediateReturnMessage)
+            return immediateReturnMessage
+        }
     }
 }
